@@ -102,7 +102,35 @@ func ParseS3URL(s3URL *url.URL) (config *aws.Config, bucket string, path string,
 	}
 
 	hasEndpoint := hasCustomEndpoint(s3URL)
-	if hasEndpoint {
+	hasOverrideS3Mode := hasCustomS3OverrideMode(s3URL)
+	if hasOverrideS3Mode {
+		awsConfig.Endpoint = aws.String(s3URL.Host)
+		awsConfig.S3ForcePathStyle = aws.Bool(s3URL.Query().Get("override_no_force_path_style") == "")
+
+		pathParts := strings.Split(strings.TrimLeft(s3URL.Path, "/"), "/")
+
+		bucket = pathParts[0]
+		path = strings.Replace(s3URL.Path, bucket, "", 1)
+
+		overrideEndpoint := s3URL.Query().Get("override_endpoint")
+		if overrideEndpoint != "" {
+			awsConfig.Endpoint = aws.String(overrideEndpoint)
+		}
+		if s3URL.Query().Get("insecure") != "" {
+			awsConfig.Endpoint = aws.String("http://" + *awsConfig.Endpoint)
+			awsConfig.DisableSSL = aws.Bool(true)
+		}
+
+		overrideBucket := s3URL.Query().Get("override_bucket")
+		if overrideBucket != "" {
+			bucket = overrideBucket
+		}
+		overridePath := s3URL.Query().Get("override_path")
+		if overridePath != "" {
+			path = "/" + strings.TrimLeft(overridePath, "/")
+		}
+
+	} else if hasEndpoint {
 		awsConfig.Endpoint = aws.String(s3URL.Host)
 		awsConfig.S3ForcePathStyle = aws.Bool(true)
 
@@ -127,6 +155,12 @@ func ParseS3URL(s3URL *url.URL) (config *aws.Config, bucket string, path string,
 	}
 
 	return awsConfig, bucket, strings.Trim(path, "/"), nil
+}
+
+
+func hasCustomS3OverrideMode(s3URL *url.URL) bool {
+	customS3Mode := s3URL.Query().Get("s3_override_mode")
+	return customS3Mode != "" && customS3Mode != "false"
 }
 
 func hasCustomEndpoint(s3URL *url.URL) bool {
